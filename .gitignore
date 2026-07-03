@@ -1,0 +1,4 @@
+.env
+saas_finops.db
+__pycache__/
+*.txt

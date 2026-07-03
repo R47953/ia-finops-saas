@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinOps Optimizer - Dashboard Console</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+        body { background-color: #0f172a; color: #f8fafc; min-height: 100vh; padding: 40px 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        header { margin-bottom: 40px; text-align: center; }
+        header h1 { font-size: 2.5rem; font-weight: 800; background: linear-gradient(to right, #38bdf8, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 10px; }
+        header p { color: #94a3b8; font-size: 1.1rem; }
+        .card { background-color: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 30px; margin-bottom: 30px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3); }
+        h2 { font-size: 1.4rem; margin-bottom: 20px; color: #f1f5f9; }
+        label { display: block; margin-bottom: 8px; color: #94a3b8; font-size: 0.9rem; font-weight: 600; }
+        input { width: 100%; padding: 12px 16px; background-color: #0f172a; border: 1px solid #475569; border-radius: 8px; color: #fff; font-size: 1rem; margin-bottom: 15px; }
+        input:focus { outline: none; border-color: #38bdf8; }
+        button { background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; width: 100%; transition: opacity 0.2s; }
+        button:hover { opacity: 0.9; }
+        .api-key-container { background-color: #0f172a; padding: 15px; border-radius: 8px; border: 1px dashed #475569; font-family: monospace; font-size: 1.1rem; color: #38bdf8; word-break: break-all; margin-top: 15px; text-align: center; }
+        .quota-header { display: flex; justify-content: space-between; color: #94a3b8; margin-bottom: 8px; }
+        .progress-bar-bg { background-color: #0f172a; height: 12px; border-radius: 6px; width: 100%; overflow: hidden; border: 1px solid #334155; }
+        .progress-bar-fill { background: linear-gradient(to right, #10b981, #3b82f6); height: 100%; width: 0%; transition: width 0.4s; }
+        .badge { display: inline-block; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; }
+        .badge-gratuit { background-color: #475569; color: #f1f5f9; }
+        .badge-premium { background-color: #1e3a8a; color: #60a5fa; border: 1px solid #3b82f6; }
+        .notification { padding: 12px 16px; border-radius: 8px; margin-top: 15px; font-size: 0.95rem; display: none; }
+        .success { background-color: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid #10b981; }
+        .error { background-color: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid #ef4444; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>🚀 FinOps Optimizer</h1>
+            <p>Espace Développeur Sécurisé</p>
+        </header>
+
+        <div class="card" id="authStep1">
+            <h2>🔑 Connexion / Inscription</h2>
+            <label for="email">Adresse Email :</label>
+            <input type="email" id="email" placeholder="dev@entreprise.com" value="test@finops.com">
+            <button type="button" id="btnDemanderCode">Recevoir un code de connexion</button>
+            <div id="notifStep1" class="notification"></div>
+        </div>
+
+        <div class="card" id="authStep2" style="display: none;">
+            <h2>Vérification de sécurité 🔒</h2>
+            <p style="color: #94a3b8; margin-bottom: 15px; font-size: 0.9rem;">Un code à 6 chiffres a été généré. Regardez dans le terminal de votre API Python.</p>
+            <label for="codeOtp">Entrez le code secret :</label>
+            <input type="text" id="codeOtp" placeholder="123456" maxlength="6">
+            <button type="button" id="btnVerifierCode">Vérifier le code et accéder au Dashboard</button>
+            <div id="notifStep2" class="notification"></div>
+        </div>
+
+        <div id="dashboardSection" class="card" style="display: none;">
+            <h2>📊 Mon Dashboard & Crédits</h2>
+            <div style="margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+                <div>
+                    <span style="color: #94a3b8;">Statut :</span>
+                    <span id="accountStatus" class="badge badge-gratuit">Gratuit</span>
+                </div>
+                <button id="btnPremium" style="width: auto; padding: 8px 16px; background: linear-gradient(135deg, #f59e0b, #d97706);">
+                    Devenir Premium ✨ (Accès Illimité)
+                </button>
+            </div>
+            <label>Votre Clé d'API (à copier dans VS Code) :</label>
+            <div id="apiKeyDisplay" class="api-key-container">sk_live_...</div>
+            <div style="margin-top: 20px;">
+                <div class="quota-header">
+                    <span>Analyses aujourd'hui</span>
+                    <span id="quotaText" style="font-weight: bold;">0 / 5</span>
+                </div>
+                <div class="progress-bar-bg"><div id="progressBar" class="progress-bar-fill"></div></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = "http://127.0.0.1:8000";
+
+        // Écouteurs d'événements sécurisés attachés en JavaScript direct
+        document.getElementById('btnDemanderCode').addEventListener('click', function(e) {
+            e.preventDefault();
+            demanderCode();
+        });
+
+        document.getElementById('btnVerifierCode').addEventListener('click', function(e) {
+            e.preventDefault();
+            verifierCode();
+        });
+
+        document.getElementById('btnPremium').addEventListener('click', function(e) {
+            e.preventDefault();
+            payerPremium();
+        });
+
+        // Étape 1 : Demander l'envoi du code secret
+        async function demanderCode() {
+            const email = document.getElementById('email').value;
+            const notif = document.getElementById('notifStep1');
+            if (!email) { alert("Email requis"); return; }
+
+            try {
+                const response = await fetch(`${API_URL}/auth/demande`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: email })
+                });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    notif.innerText = data.message;
+                    notif.className = "notification success";
+                    notif.style.display = "block";
+                    // Afficher la case du code
+                    document.getElementById('authStep2').style.display = "block";
+                } else {
+                    notif.innerText = "Erreur de communication.";
+                    notif.className = "notification error";
+                    notif.style.display = "block";
+                }
+            } catch (err) { alert("Serveur FastAPI éteint."); }
+        }
+
+        // Étape 2 : Soumettre le code reçu
+        async function verifierCode() {
+            const email = document.getElementById('email').value;
+            const code = document.getElementById('codeOtp').value;
+            const notif = document.getElementById('notifStep2');
+
+            try {
+                const response = await fetch(`${API_URL}/auth/verifier`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: email, code: code })
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    document.getElementById('authStep1').style.display = "none";
+                    document.getElementById('authStep2').style.display = "none";
+                    document.getElementById('dashboardSection').style.display = "block";
+
+                    document.getElementById('apiKeyDisplay').innerText = data.api_key;
+                    document.getElementById('quotaText').innerText = `${data.nb_analyses_aujourdhui} / ${data.limite_quotidienne}`;
+                    
+                    const badge = document.getElementById('accountStatus');
+                    badge.innerText = data.statut;
+                    badge.className = data.statut === "premium" ? "badge badge-premium" : "badge badge-gratuit";
+
+                    if (data.statut === "premium") {
+                        document.getElementById('btnPremium').style.display = "none";
+                    }
+
+                    const pourcentage = (data.nb_analyses_aujourdhui / data.limite_quotidienne) * 100;
+                    document.getElementById('progressBar').style.width = `${pourcentage}%`;
+                } else {
+                    notif.innerText = data.detail || "Code erroné.";
+                    notif.className = "notification error";
+                    notif.style.display = "block";
+                }
+            } catch (err) { alert("Erreur serveur."); }
+        }
+
+        // Étape 3 : Tunnel de paiement Stripe
+        async function payerPremium() {
+            const email = document.getElementById('email').value;
+            
+            try {
+                const response = await fetch(`${API_URL}/stripe/create-checkout-session`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: email })
+                });
+                const data = await response.json();
+                
+                if (response.ok && data.url) {
+                    window.location.href = data.url;
+                } else {
+                    alert("Impossible de générer la session de paiement.");
+                }
+            } catch (err) {
+                alert("Erreur lors du lien avec Stripe. Vérifiez vos clés secrètes.");
+            }
+        }
+    </script>
+</body>
+</html>
