@@ -23,21 +23,15 @@ from fastapi import Request
 from dotenv import load_dotenv
 
 
-# 1. Chargement de l'environnement et de l'IA
-load_dotenv()
-cle_api = os.getenv("GROQ_API_KEY")
-if __name__ == "__main__":
-    import uvicorn
-    # Le serveur en ligne va injecter un PORT spécifique, on doit l'écouter
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
-if not cle_api:
-    raise RuntimeError("❌ Clé GROQ_API_KEY manquante dans le fichier .env")
-# Charge les variables du fichier .env
+# 1. Chargement de l'environnement et des clés
 load_dotenv()
 
-# Récupère la clé secrète de manière sécurisée
+cle_api = os.getenv("GROQ_API_KEY")
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
+
+if not cle_api:
+    raise RuntimeError("❌ Clé GROQ_API_KEY manquante dans l'environnement")
+
 client_ia = Groq(api_key=cle_api)
 
 # 2. Initialisation de l'application FastAPI
@@ -46,14 +40,16 @@ app = FastAPI(
     description="API pour analyser et optimiser les performances du code backend.",
     version="0.1"
 )
+
 # 🔓 AJOUT DU MIDDLEWARE CORS POUR LE DASHBOARD FRONTEND
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Autorise tous les sites locaux à interroger ton API
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 API_KEY_NAME = "X-API-Key"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
@@ -310,4 +306,8 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             else:
                 print(f"⚠️ Aucun utilisateur trouvé en BDD pour l'email {customer_email}")
 
-
+if __name__ == "__main__":
+    import uvicorn
+    # Le serveur en ligne va injecter un PORT spécifique, on doit l'écouter
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
