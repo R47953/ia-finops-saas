@@ -38,7 +38,9 @@ client_ia = Groq(api_key=cle_api)
 app = FastAPI(
     title="SaaS FinOps Optimizer API",
     description="API pour analyser et optimiser les performances du code backend.",
-    version="0.1"
+    version="0.1",
+    docs_url="/docs",      # Force l'adresse de la doc
+    redoc_url="/redoc"     # Force l'adresse alternative
 )
 
 # 🔓 AJOUT DU MIDDLEWARE CORS POUR LE DASHBOARD FRONTEND
