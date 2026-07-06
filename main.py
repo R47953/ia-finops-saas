@@ -43,34 +43,17 @@ if not RESEND_API_KEY:
     raise RuntimeError("❌ Clé RESEND_API_KEY manquante dans l'environnement")
 
 resend.api_key = RESEND_API_KEY
-# Liste des domaines autorisés à communiquer avec ton API
-origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:5500",  # Si tu testes encore avec Live Server
-    "https://ia-finops-saas-peach.vercel.app",  # 🌐 Ajoute ton URL Vercel exacte ici (sans le "/" à la fin)
-]
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,  # Autorise ton site Vercel
-    allow_credentials=True,
-    allow_methods=["*"],  # Autorise toutes les méthodes (GET, POST, etc.)
-    allow_headers=["*"],  # Autorise tous les headers
-)
-
-
-
-
-# 2. Initialisation de l'application FastAPI
+# 2. CREATION DE L'APPLICATION (DOIT ETRE FAIT AVANT LE CORS)
 app = FastAPI(
     title="SaaS FinOps Optimizer API",
     description="API pour analyser et optimiser les performances du code backend.",
     version="0.1",
-    docs_url="/docs",      # Force l'adresse de la doc
-    redoc_url="/redoc"     # Force l'adresse alternative
+    docs_url="/docs",      
+    redoc_url="/redoc"     
 )
 
-# 🔓 AJOUT DU MIDDLEWARE CORS POUR LE DASHBOARD FRONTEND
+# 3. CONFIGURATION DU CORS (MAINTENANT QUE "APP" EXISTE)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
@@ -381,6 +364,6 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
 
 if __name__ == "__main__":
     import uvicorn
-    # Le serveur en ligne va injecter un PORT spécifique, on doit l'écouter
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
+    # Récupère le port attribué par Render, ou utilise 8000 par défaut en local
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
