@@ -109,20 +109,26 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email: email })
                 });
-                const data = await response.json();
-                
-                if (response.ok) {
-                    notif.innerText = data.message;
-                    notif.className = "notification success";
-                    notif.style.display = "block";
-                    // Afficher la case du code
-                    document.getElementById('authStep2').style.display = "block";
-                } else {
-                    notif.innerText = "Erreur de communication.";
-                    notif.className = "notification error";
-                    notif.style.display = "block";
+
+                // On vérifie le statut avant d'essayer de lire le JSON
+                if (!response.ok) {
+                    throw new Error(`Le serveur a répondu avec une erreur HTTP : ${response.status}`);
                 }
-            } catch (err) { alert("Serveur FastAPI éteint."); }
+
+                const data = await response.json();
+                console.log("Données reçues du serveur :", data); // <-- Pour voir ce que le serveur renvoie
+        
+                notif.innerText = data.message || "Code envoyé avec succès !";
+                notif.className = "notification success";
+                notif.style.display = "block";
+                // Afficher la case du code
+                document.getElementById('authStep2').style.display = "block";
+        
+            } catch (err) { 
+                // ICI on affiche la VRAIE erreur dans la console !
+                console.error("🚨 L'erreur exacte est :", err);
+                alert("Erreur : " + err.message + "\n(Regarde la console pour les détails)"); 
+            }
         }
 
         // Étape 2 : Soumettre le code reçu
