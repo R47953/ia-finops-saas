@@ -21,7 +21,7 @@ import stripe
 from fastapi.responses import RedirectResponse
 from fastapi import Request
 from dotenv import load_dotenv
-
+import resend
 
 # 1. Chargement de l'environnement et des clés
 load_dotenv()
@@ -34,6 +34,12 @@ if not cle_api:
 
 client_ia = Groq(api_key=cle_api)
 
+# Initialisation de Resend avec ta clé secrète
+RESEND_API_KEY = os.getenv("RESEND_API_KEY")
+if not RESEND_API_KEY:
+    raise RuntimeError("❌ Clé RESEND_API_KEY manquante dans l'environnement")
+
+resend.api_key = RESEND_API_KEY
 # 2. Initialisation de l'application FastAPI
 app = FastAPI(
     title="SaaS FinOps Optimizer API",
@@ -137,7 +143,20 @@ async def optimiser_code_api(
         utilisateur_actuel.nb_analyses_aujourdhui += 1
         
         db.commit()
-        
+        @app.post("/optimiser")
+async def optimiser_code(request: OptimiserRequest):
+    # ... Tout ton code existant qui appelle l'IA et génère le code optimisé ...
+    code_optimise_genere = "..." # Le résultat de ton IA
+    
+    # ✉️ Déclenchement de l'email automatique
+    # (Assure-toi d'avoir l'email de l'utilisateur disponible, par exemple via son token d'auth ou dans la requête)
+    envoyer_code_par_email(
+        email_client=request.user_email, # Adapte selon comment tu récupères l'email
+        code_original=request.code,
+        code_optimise=code_optimise_genere
+    )
+    
+    return {"status": "success", "code_optimise": code_optimise_genere}
         return {
             "statut": "succes",
             "utilisateur_email": utilisateur_actuel.email,
@@ -189,6 +208,43 @@ def demander_connexion(request: UserCreateRequest, db: Session = Depends(get_db)
     utilisateur.code_expire_a = expiration
     db.commit()
 
+    # ✉️ Fonction pour envoyer le code par email
+def envoyer_code_par_email(email_client: str, code_original: str, code_optimise: str):
+    try:
+        # Construction du contenu du mail en HTML propre
+        html_content = f"""
+        <html>
+            <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
+                <h2 style="color: #4F46E5;">Voici votre code optimisé par FinOps Optimizer ! 🚀</h2>
+                <p>Bonjour,</p>
+                <p>Vous trouverez ci-dessous le résultat de l'optimisation de votre script backend.</p>
+                
+                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;"/>
+                
+                <h3>💻 Code Optimisé :</h3>
+                <pre style="background-color: #f4f4f5; padding: 15px; border-radius: 8px; border: 1px solid #e4e4e7; overflow-x: auto; font-family: 'Courier New', Courier, monospace;">{code_optimise}</pre>
+                
+                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;"/>
+                
+                <p style="font-size: 0.9em; color: #666;">Merci d'utiliser notre service.<br/>L'équipe SaaS FinOps Optimizer</p>
+            </body>
+        </html>
+        """
+        
+        # Envoi via l'API Resend
+        params = {
+            "from": "FinOps Optimizer <onboarding@resend.dev>", # À remplacer par ton domaine plus tard
+            "to": [email_client], # Pour les tests, ce doit être ton adresse d'inscription
+            "subject": "🚀 Votre code optimisé est prêt !",
+            "html": html_content
+        }
+        
+        resend.Emails.send(params)
+        print(f"✅ Email envoyé avec succès à {email_client}")
+        
+    except Exception as e:
+        print(f"❌ Erreur lors de l'envoi de l'email : {str(e)}")
+        # On ne bloque pas forcément l'application si l'email échoue, mais on le log
     # 4. ✉️ SIMULATION D'ENVOI D'EMAIL (On l'affiche dans le terminal de l'API)
     print("\n" + "="*40)
     print(f"✉️ EMAIL ENVOYÉ À : {utilisateur.email}")
