@@ -22,6 +22,9 @@ from fastapi.responses import RedirectResponse
 from fastapi import Request
 from dotenv import load_dotenv
 import resend
+from fastapi.middleware.cors import CORSMiddleware
+
+
 
 # 1. Chargement de l'environnement et des clés
 load_dotenv()
@@ -40,6 +43,24 @@ if not RESEND_API_KEY:
     raise RuntimeError("❌ Clé RESEND_API_KEY manquante dans l'environnement")
 
 resend.api_key = RESEND_API_KEY
+# Liste des domaines autorisés à communiquer avec ton API
+origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:5500",  # Si tu testes encore avec Live Server
+    "https://ia-finops-saas-peach.vercel.app",  # 🌐 Ajoute ton URL Vercel exacte ici (sans le "/" à la fin)
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,  # Autorise ton site Vercel
+    allow_credentials=True,
+    allow_methods=["*"],  # Autorise toutes les méthodes (GET, POST, etc.)
+    allow_headers=["*"],  # Autorise tous les headers
+)
+
+
+
+
 # 2. Initialisation de l'application FastAPI
 app = FastAPI(
     title="SaaS FinOps Optimizer API",
