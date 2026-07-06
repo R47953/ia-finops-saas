@@ -118,7 +118,7 @@ async def optimiser_code_api(
         raise HTTPException(status_code=400, detail="Le code fourni est vide.")
     
     try:
-        # L'appel à l'IA reste le même...
+        # 1. Appel à l'IA Groq / Llama
         reponse = client_ia.chat.completions.create(
             messages=[
                 {"role": "system", "content": INSTRUCTIONS_PROMPT},
@@ -130,33 +130,27 @@ async def optimiser_code_api(
         
         analyse_texte = reponse.choices[0].message.content
 
-        # On lie l'analyse à l'ID de l'utilisateur qui s'est authentifié !
+        # 2. Enregistrement dans l'historique de la BDD
         nouvelle_analyse = models.HistoriqueAnalyse(
             code_original=donnees.code,
             analyse_ia=analyse_texte,
             utilisateur_id=utilisateur_actuel.id  
         )
-        # ... (début de la route inchangé)
         db.add(nouvelle_analyse)
         
-        # 🆕 INCARTADE PAYWALL : On consomme un crédit de l'utilisateur
+        # 3. Consommation d'une analyse (Compteur)
         utilisateur_actuel.nb_analyses_aujourdhui += 1
-        
         db.commit()
-        @app.post("/optimiser")
-async def optimiser_code(request: OptimiserRequest):
-    # ... Tout ton code existant qui appelle l'IA et génère le code optimisé ...
-    code_optimise_genere = "..." # Le résultat de ton IA
-    
-    # ✉️ Déclenchement de l'email automatique
-    # (Assure-toi d'avoir l'email de l'utilisateur disponible, par exemple via son token d'auth ou dans la requête)
-    envoyer_code_par_email(
-        email_client=request.user_email, # Adapte selon comment tu récupères l'email
-        code_original=request.code,
-        code_optimise=code_optimise_genere
-    )
-    
-    return {"status": "success", "code_optimise": code_optimise_genere}
+        
+        # ✉️ 4. Déclenchement de l'email automatique avec Resend
+        # On utilise directement l'adresse email de l'utilisateur connecté de manière sécurisée
+        envoyer_code_par_email(
+            email_client=utilisateur_actuel.email,
+            code_original=donnees.code,
+            code_optimise=analyse_texte
+        )
+        
+        # 5. Réponse envoyée au Frontend Vercel
         return {
             "statut": "succes",
             "utilisateur_email": utilisateur_actuel.email,
@@ -233,8 +227,8 @@ def envoyer_code_par_email(email_client: str, code_original: str, code_optimise:
         
         # Envoi via l'API Resend
         params = {
-            "from": "FinOps Optimizer <onboarding@resend.dev>", # À remplacer par ton domaine plus tard
-            "to": [email_client], # Pour les tests, ce doit être ton adresse d'inscription
+            "from": "FinOps Optimizer <onboarding@resend.dev>", 
+            "to": [email_client],  # <-- Bien utiliser email_client (l'argument de ta fonction)
             "subject": "🚀 Votre code optimisé est prêt !",
             "html": html_content
         }
