@@ -1,28 +1,25 @@
 # main.py
 import os
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from dotenv import load_dotenv
-from groq import Groq
+import random
+from datetime import date, datetime, timedelta
+
+# FastAPI & Security
+from fastapi import FastAPI, HTTPException, Depends, Security, Request
+from fastapi.responses import RedirectResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security.api_key import APIKeyHeader
+
+# Validation & Base de données
+from pydantic import BaseModel, EmailStr
+from sqlalchemy.orm import Session
 import models
 from database import engine, get_db
-from sqlalchemy.orm import Session
-from fastapi import Depends
-from fastapi import Depends, HTTPException, Security
-from fastapi.security.api_key import APIKeyHeader
-from sqlalchemy.orm import Session
-from datetime import date
-from pydantic import BaseModel, EmailStr
-from fastapi.middleware.cors import CORSMiddleware
-from datetime import date
-import random
-from datetime import datetime, timedelta
-import stripe
-from fastapi.responses import RedirectResponse
-from fastapi import Request
+
+# Services Tiers
 from dotenv import load_dotenv
+from groq import Groq
+import stripe
 import resend
-from fastapi.middleware.cors import CORSMiddleware
 
 
 
@@ -44,7 +41,7 @@ if not RESEND_API_KEY:
 
 resend.api_key = RESEND_API_KEY
 
-# 2. CREATION DE L'APPLICATION (DOIT ETRE FAIT AVANT LE CORS)
+# 2. CREATION DE L'APPLICATION (FAIT BIEN AVANT LE CORS)
 app = FastAPI(
     title="SaaS FinOps Optimizer API",
     description="API pour analyser et optimiser les performances du code backend.",
@@ -53,7 +50,7 @@ app = FastAPI(
     redoc_url="/redoc"     
 )
 
-# 3. CONFIGURATION DU CORS (MAINTENANT QUE "APP" EXISTE)
+# 3. CONFIGURATION DU CORS (MAINTENANT QUE "APP" EXISTE SANS ERREUR)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
@@ -64,6 +61,84 @@ app.add_middleware(
 
 API_KEY_NAME = "X-API-Key"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+
+# ✉️ 4. FONCTION ENVOI EMAIL (Définie COMPLÈTEMENT EN DEHORS des routes, tout à gauche)
+def envoyer_code_par_email(email_client: str, code_original: str, code_optimise: str):
+    try:
+        # Construction du contenu du mail en HTML propre
+        html_content = f"""
+        <html>
+            <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
+                <h2 style="color: #4F46E5;">Voici votre code optimisé par FinOps Optimizer ! 🚀</h2>
+                <p>Bonjour,</p>
+                <p>Vous trouverez ci-dessous le résultat de l'optimisation de votre script backend.</p>
+                
+                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;"/>
+                
+                <h3>💻 Code Optimisé :</h3>
+                <pre style="background-color: #f4f4f5; padding: 15px; border-radius: 8px; border: 1px solid #e4e4e7; overflow-x: auto; font-family: 'Courier New', Courier, monospace;">{code_optimise}</pre>
+                
+                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;"/>
+                
+                <p style="font-size: 0.9em; color: #666;">Merci d'utiliser notre service.<br/>L'équipe SaaS FinOps Optimizer</p>
+            </body>
+        </html>
+        """
+        
+        # Envoi via l'API Resend
+        params = {
+            "from": "FinOps Optimizer <onboarding@resend.dev>", 
+            "to": [email_client],  
+            "subject": "🚀 Votre code optimisé est prêt !",
+            "html": html_content
+        }
+        
+        resend.Emails.send(params)
+        print(f"✅ Email envoyé avec succès à {email_client}")
+        
+    except Exception as e:
+        print(f"❌ Erreur lors de l'envoi de l'email : {str(e)}")
+
+class UserCreateRequest(BaseModel):
+    email: EmailStr
+# 🚀 5. LA ROUTE DE CONNEXION (Propre et parfaitement alignée)
+@app.post("/auth/demande")
+def demander_connexion(request: UserCreateRequest, db: Session = Depends(get_db)):
+    utilisateur = db.query(models.Utilisateur).filter(models.Utilisateur.email == request.email).first()
+    
+    if not utilisateur:
+        # Création de l'utilisateur s'il est nouveau
+        utilisateur = models.Utilisateur(
+            email=request.email,
+            statut="gratuit",
+            limite_quotidienne=5,
+            nb_analyses_aujourdhui=0,
+            derniere_analyse_date=date.today()
+        )
+        db.add(utilisateur)
+        db.commit()
+        db.refresh(utilisateur)
+
+    # 1. Générer un code à 6 chiffres aléatoires
+    code_secret = f"{random.randint(100000, 999995)}"
+    
+    # 2. Définir une expiration dans 10 minutes
+    expiration = datetime.utcnow() + timedelta(minutes=10)
+    
+    # 3. Sauvegarder dans la BDD
+    utilisateur.code_verification = code_secret
+    utilisateur.code_expire_a = expiration
+    db.commit()
+
+    # 4. ✉️ SIMULATION D'ENVOI D'EMAIL (S'affiche dans ton terminal Render)
+    print("\n" + "="*40)
+    print(f"✉️ EMAIL ENVOYÉ À : {utilisateur.email}")
+    print(f"👉 VOTRE CODE DE CONNEXION : {code_secret}")
+    print("="*40 + "\n")
+
+    # LE RETURN FINAL (Parfaitement indenté au même niveau que le reste de la fonction)
+    return {"message": "Un code de vérification a été envoyé par email."}
 
 # Fonction qui va fouiller dans la BDD pour voir si la clé existe
 def verifier_authentification(api_key: str = Depends(api_key_header), db: Session = Depends(get_db)):
@@ -170,86 +245,6 @@ async def optimiser_code_api(
 @app.get("/")
 def home():
     return {"message": "Le serveur du SaaS FinOps est en ligne ! 🚀"}
-
-
-class UserCreateRequest(BaseModel):
-    email: str
-
-class VerificationRequest(BaseModel):
-    email: str
-    code: str
-@app.post("/auth/demande")
-def demander_connexion(request: UserCreateRequest, db: Session = Depends(get_db)):
-    utilisateur = db.query(models.Utilisateur).filter(models.Utilisateur.email == request.email).first()
-    
-    if not utilisateur:
-        # Création de l'utilisateur s'il est nouveau
-        utilisateur = models.Utilisateur(
-            email=request.email,
-            statut="gratuit",
-            limite_quotidienne=5,
-            nb_analyses_aujourdhui=0,
-            derniere_analyse_date=date.today()
-        )
-        db.add(utilisateur)
-        db.commit()
-        db.refresh(utilisateur)
-
-    # 1. Générer un code à 6 chiffres aléatoires
-    code_secret = f"{random.randint(100000, 999995)}"
-    
-    # 2. Définir une expiration dans 10 minutes
-    expiration = datetime.utcnow() + timedelta(minutes=10)
-    
-    # 3. Sauvegarder dans la BDD
-    utilisateur.code_verification = code_secret
-    utilisateur.code_expire_a = expiration
-    db.commit()
-
-    # ✉️ Fonction pour envoyer le code par email
-def envoyer_code_par_email(email_client: str, code_original: str, code_optimise: str):
-    try:
-        # Construction du contenu du mail en HTML propre
-        html_content = f"""
-        <html>
-            <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
-                <h2 style="color: #4F46E5;">Voici votre code optimisé par FinOps Optimizer ! 🚀</h2>
-                <p>Bonjour,</p>
-                <p>Vous trouverez ci-dessous le résultat de l'optimisation de votre script backend.</p>
-                
-                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;"/>
-                
-                <h3>💻 Code Optimisé :</h3>
-                <pre style="background-color: #f4f4f5; padding: 15px; border-radius: 8px; border: 1px solid #e4e4e7; overflow-x: auto; font-family: 'Courier New', Courier, monospace;">{code_optimise}</pre>
-                
-                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;"/>
-                
-                <p style="font-size: 0.9em; color: #666;">Merci d'utiliser notre service.<br/>L'équipe SaaS FinOps Optimizer</p>
-            </body>
-        </html>
-        """
-        
-        # Envoi via l'API Resend
-        params = {
-            "from": "FinOps Optimizer <onboarding@resend.dev>", 
-            "to": [email_client],  # <-- Bien utiliser email_client (l'argument de ta fonction)
-            "subject": "🚀 Votre code optimisé est prêt !",
-            "html": html_content
-        }
-        
-        resend.Emails.send(params)
-        print(f"✅ Email envoyé avec succès à {email_client}")
-        
-    except Exception as e:
-        print(f"❌ Erreur lors de l'envoi de l'email : {str(e)}")
-        # On ne bloque pas forcément l'application si l'email échoue, mais on le log
-    # 4. ✉️ SIMULATION D'ENVOI D'EMAIL (On l'affiche dans le terminal de l'API)
-    print("\n" + "="*40)
-    print(f"✉️ EMAIL ENVOYÉ À : {utilisateur.email}")
-    print(f"👉 VOTRE CODE DE CONNEXION : {code_secret}")
-    print("="*40 + "\n")
-
-    return {"message": "Un code de vérification a été envoyé par email."}
 
 class VerificationRequest(BaseModel):
     email: str

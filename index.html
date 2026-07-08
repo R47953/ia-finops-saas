@@ -98,78 +98,99 @@
         });
 
         // Étape 1 : Demander l'envoi du code secret
-        async function demanderCode() {
-            const email = document.getElementById('email').value;
-            const notif = document.getElementById('notifStep1');
-            if (!email) { alert("Email requis"); return; }
+// ==========================================
+// Étape 1 : Demander le code
+// ==========================================
+async function demanderCode() {
+    const email = document.getElementById('email').value; // Assure-toi que l'ID est le bon
+    const notif = document.getElementById('notifStep1'); // Ajuste selon ton HTML
+    
+    try {
+        const response = await fetch(`${API_URL}/auth/demande`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email })
+        });
 
-            try {
-                const response = await fetch(`${API_URL}/auth/demande`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: email })
-                });
+        // Lecture sécurisée de la réponse
+        const responseText = await response.text();
+        let data = null;
+        if (responseText) {
+            try { data = JSON.parse(responseText); } 
+            catch (e) { console.warn("Réponse non-JSON ignorée"); }
+        }
 
-                // On vérifie le statut avant d'essayer de lire le JSON
-                if (!response.ok) {
-                    throw new Error(`Le serveur a répondu avec une erreur HTTP : ${response.status}`);
-                }
+        if (response.ok) {
+            // LIGNE 121 CORRIGÉE : On vérifie que data existe avant de lire data.message
+            const successMessage = (data && data.message) ? data.message : "Code envoyé avec succès !";
+            
+            notif.innerText = successMessage;
+            notif.className = "notification success";
+            notif.style.display = "block";
+            
+            // Passer à l'étape 2 (afficher le champ du code, etc.)
+            
+        } else {
+            const errorMessage = (data && data.message) ? data.message : "Erreur lors de la demande.";
+            notif.innerText = errorMessage;
+            notif.className = "notification error";
+            notif.style.display = "block";
+        }
+    } catch (error) {
+        notif.innerText = "Erreur de communication avec le serveur.";
+        notif.className = "notification error";
+        notif.style.display = "block";
+    }
+} // <-- CETTE ACCOLADE EST CRUCIALE POUR ÉVITER L'ERREUR DE LA LIGNE 129
 
-                const data = await response.json();
-                console.log("Données reçues du serveur :", data); // <-- Pour voir ce que le serveur renvoie
-        
-                notif.innerText = data.message || "Code envoyé avec succès !";
+
+// ==========================================
+// Étape 2 : Soumettre le code reçu
+// ==========================================
+async function verifierCode() {
+    const email = document.getElementById('email').value;
+    const code = document.getElementById('codeOtp').value;
+    const notif = document.getElementById('notifStep2');
+
+    try {
+        const response = await fetch(`${API_URL}/auth/verification`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email, code_verification: code })
+        });
+
+        const responseText = await response.text();
+        let data = null;
+        if (responseText) {
+            try { data = JSON.parse(responseText); } 
+            catch (e) {}
+        }
+
+        if (response.ok) {
+            // LIGNE 140 CORRIGÉE : Même protection ici
+            const token = (data && data.access_token) ? data.access_token : null;
+            
+            if (token) {
+                localStorage.setItem("token", token);
+                notif.innerText = "Connexion réussie !";
                 notif.className = "notification success";
                 notif.style.display = "block";
-                // Afficher la case du code
-                document.getElementById('authStep2').style.display = "block";
-        
-            } catch (err) { 
-                // ICI on affiche la VRAIE erreur dans la console !
-                console.error("🚨 L'erreur exacte est :", err);
-                alert("Erreur : " + err.message + "\n(Regarde la console pour les détails)"); 
+                
+                // Redirection vers le dashboard
+                // window.location.href = "/dashboard.html";
             }
+        } else {
+            const errorMessage = (data && data.detail) ? data.detail : "Code invalide ou expiré.";
+            notif.innerText = errorMessage;
+            notif.className = "notification error";
+            notif.style.display = "block";
         }
-
-        // Étape 2 : Soumettre le code reçu
-        async function verifierCode() {
-            const email = document.getElementById('email').value;
-            const code = document.getElementById('codeOtp').value;
-            const notif = document.getElementById('notifStep2');
-
-            try {
-                const response = await fetch(`${API_URL}/auth/verifier`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: email, code: code })
-                });
-                const data = await response.json();
-
-                if (response.ok) {
-                    document.getElementById('authStep1').style.display = "none";
-                    document.getElementById('authStep2').style.display = "none";
-                    document.getElementById('dashboardSection').style.display = "block";
-
-                    document.getElementById('apiKeyDisplay').innerText = data.api_key;
-                    document.getElementById('quotaText').innerText = `${data.nb_analyses_aujourdhui} / ${data.limite_quotidienne}`;
-                    
-                    const badge = document.getElementById('accountStatus');
-                    badge.innerText = data.statut;
-                    badge.className = data.statut === "premium" ? "badge badge-premium" : "badge badge-gratuit";
-
-                    if (data.statut === "premium") {
-                        document.getElementById('btnPremium').style.display = "none";
-                    }
-
-                    const pourcentage = (data.nb_analyses_aujourdhui / data.limite_quotidienne) * 100;
-                    document.getElementById('progressBar').style.width = `${pourcentage}%`;
-                } else {
-                    notif.innerText = data.detail || "Code erroné.";
-                    notif.className = "notification error";
-                    notif.style.display = "block";
-                }
-            } catch (err) { alert("Erreur serveur."); }
-        }
+    } catch (error) {
+        notif.innerText = "Erreur de communication avec le serveur.";
+        notif.className = "notification error";
+        notif.style.display = "block";
+    }
+}
 
         // Étape 3 : Tunnel de paiement Stripe
         async function payerPremium() {
